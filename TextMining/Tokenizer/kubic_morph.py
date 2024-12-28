@@ -609,7 +609,70 @@ def stop_syn_add_title_text(
     synonymTF,
     logger
 ):
+    identification = "preprocessing(stop_syn_local)// "
+    logger.info(identification + "Start local preprocessing with synonyms & stopwords")
+    
+    try:
+        document_list = {
+            'post_title': [f"Document {i}" for i in range(len(raw_texts))],
+            'all_content': []
+        }
 
+        for text in raw_texts:
+            document_list['all_content'].append([text])
+
+        number_of_docs = len(document_list['all_content'])
+        logger.info(identification + f"Received {number_of_docs} documents for local preprocessing.")
+    except Exception as e:
+        logger.error(identification + "Error prepping local data: " + str(e))
+        return (False, str(e))
+    try:
+        if stopwordTF:
+            stopword_file = getStopword("default", "", "")
+        else:
+            stopword_file = []
+
+        logger.info(identification + "stopword loaded successfully.")
+
+    except Exception as e:
+        logger.error(identification + "stopward load error: " + str(e))
+        return (False, "stopword를 적용할 수 없습니다. 세부사항: " + str(e))
+
+    # 3rd Step Morph analysis + stowpwords + word class 
+    try:
+        result_list = []
+        for i in range(len(document['all_content'])):
+            document_result = []
+            for sentence in document_list['all_content'][i]:
+                poss = mecab.pos(sentence)
+
+                target_pos_tag_list = []
+                if wordclass[0] == '1': # verbs
+                    target_pos_tag_list.append("VV")
+                if wordclass[1] == '1': # Nouns
+                    target_pos_tag_list += ["NNG", "NNP", "NNB", "NNBC", "NR"]
+                if wordclass[2] == '1':
+                    target_pos_tag_list.append("VA")
+
+                token_candidates = [
+                    token for (token, pos) in poss if pos in target_pos_tag_list
+                ]
+                token_candidates = [t for t in token_candidates if len(t) > 1]
+                final_tokens = [
+                    t for t in token_candidates
+                    if t not in stopword_file
+                ]
+                document_result.append(final_tokens)
+            result_list.append(document_result)
+        logger.info(identification + "Morphological analysis + stopwords done.")
+    except Exception as e: 
+        logger.error(identification + "Morphological analysis error " + str(e))
+        return (False, "형태소 추출 오류: " + str(e))
+    # 4) Apply synonyms
+    try:
+        if synonym_file:
+
+    except Exception as e: 
 
 def compound_add_text_text(
     list_of_raw_texts,
