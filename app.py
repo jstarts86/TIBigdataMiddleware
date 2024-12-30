@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+# app.py
 
 import account.BEMiddleware as BEMW
 from werkzeug.exceptions import HTTPException
@@ -248,12 +249,20 @@ def preprocessing_text():
         if not list_of_texts:
             return jsonify({"error": "NO 'texts' provided"}), 400
 
+        email = data.get("email", "")
+        keyword = data.get("keyword", "")
+        savedDate = data.get("savedDate", "")
+        stopwordTF = data.get("stopword", False)
+        synonymTF = data.get("synonym", False)
         wordclass = data.get("wordclass", "010")
         stopwordTF = data.get("stopword", False)
         synonymTF = data.get("synonym", False)
         compoundTF = data.get("compound", False)
 
         success, result = compound_add_text_local(
+            email,
+            keyword,
+            savedDate,
             list_of_texts,
             wordclass=wordclass,
             stopwordTF=stopwordTF,
@@ -261,7 +270,19 @@ def preprocessing_text():
             compoundTF=compoundTF,
             logger=logger,
         )
-
+        if success:
+            return jsonify({
+                "success": True,
+                "result": result
+            }), 200
+        else:
+            return jsonify({
+                "success": False,
+                "error": result
+            }), 400
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        logger.error(identification + "Exception: " + str(e))
 
 @app.route("/textmining", methods=["GET", "POST"])
 def textmining():

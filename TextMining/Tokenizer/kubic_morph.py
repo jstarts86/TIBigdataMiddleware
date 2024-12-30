@@ -1,3 +1,4 @@
+# kubic_morph.py
 import os
 import sys
 import tarfile
@@ -601,91 +602,303 @@ def compound_add_text(
 
 # result, doc = compound_add_text('21800520@handong.ac.kr', '남북통일', "2022-06-29T16:01:37.217Z", "010", False, False, False)
 
+
 def stop_syn_add_title_text(
+    email,
+    keyword,
+    savedDate,
     raw_texts,
     mecab,
     wordclass,
     stopwordTF,
     synonymTF,
-    logger
+    logger,
 ):
     identification = "preprocessing(stop_syn_local)// "
-    logger.info(identification + "Start local preprocessing with synonyms & stopwords")
-    
+    logger.info(identification +
+                "Start local preprocessing with synonyms & stopwords")
     try:
         document_list = {
-            'post_title': [f"Document {i}" for i in range(len(raw_texts))],
-            'all_content': []
+            "post_title": [f"Document {i}" for i in range(len(raw_texts))],
+            "all_content": [],
         }
 
         for text in raw_texts:
-            document_list['all_content'].append([text])
+            document_list["all_content"].append([text])
 
-        number_of_docs = len(document_list['all_content'])
-        logger.info(identification + f"Received {number_of_docs} documents for local preprocessing.")
+        number_of_docs = len(document_list["all_content"])
+        logger.info(
+            identification
+            + f"Received {number_of_docs} documents for local preprocessing."
+        )
     except Exception as e:
-        logger.error(identification + "Error prepping local data: " + str(e))
+        err = traceback.format_exc()
+        logger.error(identification + "Error prepping local data: " + str(err))
         return (False, str(e))
     try:
         if stopwordTF:
+            # stopword_file = getStopword(email, keyword, savedDate)
             stopword_file = getStopword("default", "", "")
         else:
-            stopword_file = []
-
+            stopword_file = getStopword("default", "", "")
+            # stopword_file = []
         logger.info(identification + "stopword loaded successfully.")
-
     except Exception as e:
-        logger.error(identification + "stopward load error: " + str(e))
-        return (False, "stopword를 적용할 수 없습니다. 세부사항: " + str(e))
+        err = traceback.format_exc()
+        logger.error(
+            identification + "stopword를 적용할 수 없습니다. 세부사항: " + str(err)
+        )
+        return False, "stopword를 적용할 수 없습니다. 세부사항: " + str(e)
 
-    # 3rd Step Morph analysis + stowpwords + word class 
+    try:
+        if synonymTF:
+            synonym_file = getSynonym(email, keyword, savedDate)
+        else:
+            synonym_file = getSynonym("default", "", "")
+        logger.info(identification + "synonym used")
+    except Exception as e:
+        err = traceback.format_exc()
+        logger.error(identification + "synonym 적용오류: " + str(err))
+        return False, "synonym을 적용할 수 없습니다. 세부사항: " + str(e)
+
     try:
         result_list = []
-        for i in range(len(document['all_content'])):
-            document_result = []
-            for sentence in document_list['all_content'][i]:
-                poss = mecab.pos(sentence)
+        english_index_list = []
+        for i in range(len(document_list["post_title"])):
+            if is_english(document_list["post_title"][i]):
+                english_index_list.append(i)
 
-                target_pos_tag_list = []
-                if wordclass[0] == '1': # verbs
-                    target_pos_tag_list.append("VV")
-                if wordclass[1] == '1': # Nouns
-                    target_pos_tag_list += ["NNG", "NNP", "NNB", "NNBC", "NR"]
-                if wordclass[2] == '1':
-                    target_pos_tag_list.append("VA")
+        result_list = makePosList(
+            mecab, document_list, wordclass, logger, english_index_list, stopword_file
+        )
+        logger.info(identification + "형태소 추출 및 불용어사전 처리를 완료하였습니다.")
+    except Exception as e:
+        err = traceback.format_exc()
+        logger.error(identification + "형태소 추출 오류: " + str(err))
+        return False, "형태소 추출 오류, 세부사항: " + str(e)
 
-                token_candidates = [
-                    token for (token, pos) in poss if pos in target_pos_tag_list
-                ]
-                token_candidates = [t for t in token_candidates if len(t) > 1]
-                final_tokens = [
-                    t for t in token_candidates
-                    if t not in stopword_file
-                ]
-                document_result.append(final_tokens)
-            result_list.append(document_result)
-        logger.info(identification + "Morphological analysis + stopwords done.")
-    except Exception as e: 
-        logger.error(identification + "Morphological analysis error " + str(e))
-        return (False, "형태소 추출 오류: " + str(e))
+    # 3rd Step Morph analysis + stowpwords + word class
+    # try:
+    #     result_list = []
+    #     for i in range(len(document_list['all_content'])):
+    #         document_result = []
+    #         for sentence in document_list['all_content'][i]:
+    #             poss = mecab.pos(sentence)
+    #
+    #             target_pos_tag_list = []
+    #             if wordclass[0] == '1':  # verbs
+    #                 target_pos_tag_list.append("VV")
+    #             if wordclass[1] == '1':  # Nouns
+    #                 target_pos_tag_list += ["NNG", "NNP", "NNB", "NNBC", "NR"]
+    #             if wordclass[2] == '1':
+    #                 target_pos_tag_list.append("VA")
+    #
+    #             token_candidates = [
+    #                 token for (token, pos) in poss if pos in target_pos_tag_list
+    #             ]
+    #             token_candidates = [t for t in token_candidates if len(t) > 1]
+    #             final_tokens = [
+    #                 t for t in token_candidates
+    #                 if t not in stopword_file
+    #             ]
+    #             document_result.append(final_tokens)
+    #         result_list.append(document_result)
+    #     logger.info(identification + "Morphological analysis + stopwords done.")
+    # except Exception as e:
+    #     logger.error(identification + "Morphological analysis error " + str(e))
+    #     return (False, "형태소 추출 오류: " + str(e))
     # 4) Apply synonyms
     try:
         if synonym_file:
+            synonym_dict = dict(synonym_file)
+            reverse_map = dict()
 
-    except Exception as e: 
+            for base, variants in synonym_dict.items():
+                for word in variants:
+                    reverse_map[word] = base
+            for doc in result_list:
+                for sentence_list in doc:
+                    for idx, token in enumerate(sentence_list):
+                        if token in reverse_map:
+                            sentence_list[idx] = reverse_map[token]
+        logger.info(identification + "synonym apply done")
+    except Exception as e:
+        logger.error(identification + "synonym apply error: " + str(e))
+        return (False, "유의어 사전 처리 중 오류: " + str(e))
 
-def compound_add_text_text(
+    text_dict = {"title": document_list["post_title"], "content": result_list}
+
+    return (True, text_dict)
+
+
+def compound_add_text_local(
+    email,
+    keyword,
+    savedDate,
     list_of_raw_texts,
     wordclass="010",
     stopwordTF=False,
     synonymTF=False,
     compoundTF=False,
-    logger=None
+    logger=None,
 ):
-    identification = "preprocessing(compound_local_//"
+    identification = (
+        str(email) + "_" + "preprocessing(compound_local)" +
+        "_" + str(savedDate) + "//"
+    )
+
+    if logger:
+        logger.info(identification +
+                    "Starting local compound-based preprocessing.")
+    else:
+        import logging
+
+        logger = logging.getLogger("compound_local")
+    logger.info(identification + "전처리를 위한 사용자사전 폴더를 생성합니다.")
+    USER_MECAB_DIR = MECAB_DIR + "/" + str(email)
+    COMPILE_DICT = True
+
+    result = create_dir(USER_MECAB_DIR, logger, identification)
+
+    # Create the directory if not exist
+    result = create_dir(USER_MECAB_DIR, logger, identification)
+    if not result[0]:
+        return result[0], result[1]
+
+    # Install default mecab if needed
+    result = install_mecab(USER_MECAB_DIR, logger, identification)
+    if not result[0]:
+        return result[0], result[1]
+    # 2) Build or load compound dictionary lines
+    file_data = []
+    try:
+        if compoundTF:
+            # If you want to load user’s compound dictionary from DB or file, do so
+            compound_file = getCompound(
+                email, keyword, savedDate
+            )  # e.g. For local usage
+            logger.info(identification + "사용자가 등록한 사전을 적용했습니다.")
+        else:
+            # If user chooses not to handle compound, or a default
+            compound_file = getCompound("default", "", "")
+        # e.g. from 'compound_file': create CSV lines
+        if compound_file != False:
+            import pandas as pd
+
+            com_df = pd.DataFrame(
+                list(compound_file.items()), columns=["단어", "품사"])
+            for idx in range(len(com_df)):
+                jongsung_TF = get_jongsung_TF(com_df["단어"][idx])
+                line = "{},,,,{},*,{},{},*,*,*,*,*\n".format(
+                    com_df["단어"][idx],
+                    com_df["품사"][idx],
+                    jongsung_TF,
+                    com_df["단어"][idx],
+                )
+                file_data.append(line)
+        else:
+            return False, "복합어사전 형식 오류"
+    except Exception as e:
+        return False, f"Error building compound dictionary lines: {str(e)}"
+
+    # 3) Write lines to my-dic.csv
+    try:
+        if os.path.isfile(
+            USER_MECAB_DIR + "/mecab-ko-dic-2.1.1-20180720/user-dic/my-dic.csv"
+        ):
+            with open(
+                USER_MECAB_DIR + "/mecab-ko-dic-2.1.1-20180720/user-dic/my-dic.csv",
+                "r",
+                encoding="utf-8",
+            ) as f:
+                existing_lines = f.readlines()
+                if existing_lines == file_data:
+                    COMPILE_DICT = False
+        with open(
+            USER_MECAB_DIR + "/mecab-ko-dic-2.1.1-20180720/user-dic/my-dic.csv",
+            "w",
+            encoding="utf-8",
+        ) as f:
+            for line in file_data:
+                f.write(line)
+    except Exception as e:
+        err = traceback.format_exc()
+        logger.error(identification + "파일 열기 오류 세부사항: " + str(err))
+        return False, f"File I/O error: {str(e)}"
+
+    class cd:
+        def __init__(self, newPath):
+            self.newPath = os.path.expanduser(newPath)
+
+        def __enter__(self):
+            self.savedPath = os.getcwd()
+            os.chdir(self.newPath)
+
+        def __exit__(self, etype, value, traceback):
+            os.chdir(self.savedPath)
+    # 4) If needed, compile dictionary
+    if COMPILE_DICT:
+        logger.info(identification + "새로 사용자사전을 컴파일합니다.")
+        print("새로 사용자사전을 컴파일합니다.")
+        if logger:
+            logger.info(identification +
+                        "Compiling user dictionary for local usage.")
+        with cd(USER_MECAB_DIR + "/mecab-ko-dic-2.1.1-20180720"):
+            # Possibly run ./autogen.sh, ./configure, make, add-userdic.sh, etc.
+            # as in your original code
+            if not os.path.exists(USER_MECAB_DIR + "/userlocallibmecab"):
+                print("최초컴파일을 진행합니다.")
+                subprocess.run("./autogen.sh")
+                subprocess.run("./configure")
+                subprocess.call("make")
+
+            subprocess.run("./tools/add-userdic.sh")
+            subprocess.call(["make", "clean"])
+            logger.info(identification + "\n<<make install>>")
+            subprocess.call(
+                ["make", "install", "DESTDIR=" +
+                    USER_MECAB_DIR + "/userlocallibmecab/"]
+            )
+    else:
+        if logger:
+            logger.info(identification +
+                        "Reusing previously compiled user dictionary.")
+            print("기존에 컴파일된 사용자사전을 사용합니다.")
+
+    # 5) Create the Mecab instance with the newly compiled dictionary
+    mecab = Mecab(
+        dicpath=USER_MECAB_DIR
+        + "/userlocallibmecab/usr/local/lib/mecab/dic/mecab-ko-dic"
+    )
+
+    # 6) Now pass the raw_texts to your local version of 'stop_syn_add_title'
+    success, doc = stop_syn_add_title_text(
+        email,keyword,savedDate,list_of_raw_texts, mecab, wordclass, stopwordTF, synonymTF, logger
+    )
+
+    if not success:
+        return success, doc  # doc is error message
+
+    # 7) Optionally, do the final logic: e.g., count tokens, store in DB, etc.
+    # If you want to mimic the original's "store in Mongo", do it here:
+    # or simply build the final return structure as original does.
+    nTokens = 0
+    for doc_content in doc["content"]:
+        for sentence_tokens in doc_content:
+            nTokens += len(sentence_tokens)
+
+    # Build the final doc to return
+    return_mdoc = {
+        "processedDate": str(datetime.datetime.now()),
+        "nTokens": nTokens,
+        "tokenList": doc["content"],
+        "titleList": doc["title"],
+    }
+
+    return (True, return_mdoc)
+
 
 # if result:
 #     print(doc["tokenList"])
 # else:
 #     print(doc)
-
